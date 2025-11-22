@@ -75,18 +75,12 @@ jobs:
             
             # Detener proceso anterior si existe
             echo "Deteniendo proceso anterior..."
-            if [ -f /home/ubuntu/fastapi.pid ]; then
-              OLD_PID=$(cat /home/ubuntu/fastapi.pid)
-              kill $OLD_PID 2>/dev/null || true
-              sleep 2
-            fi
+            pkill -9 -f "uvicorn app.main:app" || true
+            sleep 2
             
-            # Alternativa: matar por nombre del proceso
-            pkill -f "uvicorn app.main:app" || true
-            sleep 3
-            
-            # Limpiar log anterior
-            > /home/ubuntu/fastapi.log
+            # Limpiar archivos antiguos
+            rm -f /home/ubuntu/fastapi.pid || true
+            > /home/ubuntu/fastapi.log 2>/dev/null || true
             
             # Iniciar FastAPI en background
             echo "Iniciando FastAPI en puerto 8000..."
