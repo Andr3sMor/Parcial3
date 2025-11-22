@@ -36,11 +36,9 @@ jobs:
 # ========================================
 # 2. DESPLIEGUE FASTAPI
 # ========================================
-  deploy:
+    deploy:
     name: Despliegue Punto 1 - FastAPI
     runs-on: ubuntu-latest
-
-    # Este job solo se ejecuta si tests pasa
     needs: tests
 
     steps:
@@ -56,9 +54,15 @@ jobs:
             cd /home/ubuntu
             source venv/bin/activate
 
-            echo "Deteniendo FastAPI anterior..."
-            pkill -15 -f "uvicorn app.main:app" || true
-            sleep 2
+            echo "Deteniendo FastAPI anterior (si existe)..."
+            if [ -f fastapi.pid ]; then
+              OLD_PID=$(cat fastapi.pid)
+              if ps -p $OLD_PID > /dev/null; then
+                kill $OLD_PID
+                sleep 2
+              fi
+              rm -f fastapi.pid
+            fi
 
             echo "Iniciando FastAPI..."
             nohup uvicorn app.main:app \
@@ -66,6 +70,7 @@ jobs:
               --port 8000 \
               > fastapi.log 2>&1 &
 
+            echo $! > fastapi.pid
             sleep 5
 
             echo "Verificando servicio..."
