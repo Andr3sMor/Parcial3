@@ -6,47 +6,17 @@ on:
   workflow_dispatch:  # Permite ejecutar manualmente
 
 jobs:
-  test-and-deploy:
+  deploy-punto-1:
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-      
       # ========================================
-      # PRUEBAS UNITARIAS
+      # 2. PRUEBAS UNITARIAS EN EC2
       # ========================================
-      - name: Install dependencies for testing
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      
-      - name: Run Unit Tests
-        run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          pytest tests/ -v --tb=short --maxfail=5
-        continue-on-error: false  # Si las pruebas fallan, detiene el workflow
-      
-      - name: Generate test coverage report
-        run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          pytest tests/ --cov=app --cov-report=term-missing --cov-report=html
-      
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v3
-        with:
-          name: coverage-report
-          path: htmlcov/
-      
-      # ========================================
-      # PUNTO 1: DEPLOY FASTAPI A EC2
-      # ========================================
-      - name: Deploy to EC2 - Point 1
+      - name: Run Unit Tests on EC2
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -54,48 +24,113 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             echo "=========================================="
-            echo "INICIANDO DESPLIEGUE - PUNTO 1"
+            echo "PASO 2: EJECUTANDO PRUEBAS UNITARIAS"
+            echo "=========================================="
+            
+            source venv/bin/activate
+            
+            # Actualizar pip
+            pip install --upgrade pip
+            
+            # Instalar dependencias
+            pip install -r requirements.txt
+            
+            echo "dependencias instaladas correctamente"
+            echo ""
+            echo "Paquetes instalados:"
+            pip list | grep -E 'fastapi|uvicorn|pytest|mysql'
+            
+            # Configurar PYTHONPATH
+            export PYTHONPATH=/home/ubuntu:$PYTHONPATH
+            
+            # Ejecutar pruebas
+            pytest tests/ -v --tb=short --maxfail=5
+            
+            # Verificar resultado
+            if [ $? -eq 0 ]; then
+              echo ""
+              echo "✅ TODAS LAS PRUEBAS PASARON"
+            else
+              echo ""
+              echo "❌ ALGUNAS PRUEBAS FALLARON"
+              exit 1
+            fi
+      
+      # ========================================
+      # 3. DESPLEGAR PUNTO 1 (FASTAPI)
+      # ========================================
+      - name: Deploy FastAPI - Punto 1
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "=========================================="
+            echo "PASO 3: DESPLEGANDO FASTAPI (PUNTO 1)"
             echo "=========================================="
             
             cd /home/ubuntu
-            
-            # Pull latest code (si usas git)
-            if [ -d .git ]; then
-              git pull origin main
-            fi
-            
-            # Activar entorno virtual
             source venv/bin/activate
-            
-            # Instalar/actualizar dependencias
-            pip install -r requirements.txt
             
             # Detener proceso anterior si existe
             echo "Deteniendo proceso anterior..."
+            if [ -f /home/ubuntu/fastapi.pid ]; then
+              OLD_PID=$(cat /home/ubuntu/fastapi.pid)
+              kill $OLD_PID 2>/dev/null || true
+              sleep 2
+            fi
+            
+            # Alternativa: matar por nombre del proceso
             pkill -f "uvicorn app.main:app" || true
             sleep 3
             
+            # Limpiar log anterior
+            > /home/ubuntu/fastapi.log
+            
             # Iniciar FastAPI en background
-            echo "Iniciando FastAPI..."
+            echo "Iniciando FastAPI en puerto 8000..."
             nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /home/ubuntu/fastapi.log 2>&1 &
             
             # Guardar PID
             echo $! > /home/ubuntu/fastapi.pid
+            NEW_PID=$(cat /home/ubuntu/fastapi.pid)
+            echo "Proceso iniciado con PID: $NEW_PID"
             
             # Esperar a que inicie
+            echo "Esperando a que FastAPI inicie..."
             sleep 8
             
             # Verificar que esté corriendo
-            echo "Verificando que FastAPI esté corriendo..."
-            if curl -f http://localhost:8000/songs > /dev/null 2>&1; then
-              echo "✅ FastAPI está corriendo correctamente"
-              echo "PID: $(cat /home/ubuntu/fastapi.pid)"
-            else
-              echo "❌ ERROR: FastAPI no está respondiendo"
-              tail -n 50 /home/ubuntu/fastapi.log
-              exit 1
-            fi
+            echo ""
+            echo "Verificando que FastAPI esté respondiendo..."
             
-            echo "=========================================="
-            echo "PUNTO 1 COMPLETADO EXITOSAMENTE"
-            echo "=========================================="
+            MAX_RETRIES=5
+            RETRY=0
+            
+            while [ $RETRY -lt $MAX_RETRIES ]; do
+              if curl -f http://localhost:8000/songs > /dev/null 2>&1; then
+                echo "✅ FastAPI está corriendo correctamente"
+                echo "✅ Endpoint /songs responde OK"
+                echo ""
+                echo "Detalles del proceso:"
+                ps aux | grep uvicorn | grep -v grep
+                echo ""
+                echo "=========================================="
+                echo "✅ PUNTO 1 COMPLETADO EXITOSAMENTE"
+                echo "=========================================="
+                exit 0
+              fi
+              
+              RETRY=$((RETRY+1))
+              echo "Intento $RETRY/$MAX_RETRIES fallido, reintentando..."
+              sleep 3
+            done
+            
+            # Si llegamos aquí, falló
+            echo ""
+            echo "❌ ERROR: FastAPI no está respondiendo"
+            echo ""
+            echo "Últimas 50 líneas del log:"
+            tail -n 50 /home/ubuntu/fastapi.log
+            exit 1
