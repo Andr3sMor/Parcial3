@@ -49,7 +49,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            echo "=== DESPLEGANDO FASTAPI ==="
+            echo "=== DESPLEGANDO FASTAPI ... ==="
 
             cd /home/ubuntu
             source venv/bin/activate
