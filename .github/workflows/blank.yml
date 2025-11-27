@@ -12,7 +12,6 @@ jobs:
   tests:
     name: Pruebas unitarias en EC2
     runs-on: ubuntu-latest
-
     steps:
       - name: Ejecutar tests
         uses: appleboy/ssh-action@master
@@ -22,14 +21,10 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             echo "=== PRUEBAS UNITARIAS ==="
-
             cd /home/ubuntu
             source venv/bin/activate
-
             pip install -r requirements.txt
-
             export PYTHONPATH=/home/ubuntu:$PYTHONPATH
-
             pytest tests/ -v --maxfail=1
 
 # ========================================
@@ -39,7 +34,6 @@ jobs:
     name: Despliegue Punto 1 - FastAPI
     runs-on: ubuntu-latest
     needs: tests
-
     steps:
       - name: Desplegar FastAPI
         uses: appleboy/ssh-action@master
@@ -49,10 +43,8 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             echo "=== DESPLEGANDO FASTAPI ... ==="
-
             cd /home/ubuntu
             source venv/bin/activate
-
             echo "Deteniendo FastAPI anterior (si existe)..."
             if [ -f fastapi.pid ]; then
               OLD_PID=$(cat fastapi.pid)
@@ -62,16 +54,13 @@ jobs:
               fi
               rm -f fastapi.pid
             fi
-
             echo "Iniciando FastAPI..."
             nohup uvicorn app.main:app \
               --host 0.0.0.0 \
               --port 8000 \
               > fastapi.log 2>&1 &
-
             echo $! > fastapi.pid
             sleep 5
-
             echo "Verificando servicio..."
             if curl -f http://localhost:8000/songs; then
               echo "✅ FastAPI desplegada correctamente"
@@ -79,6 +68,7 @@ jobs:
               echo "❌ FastAPI no responde"
               tail -n 40 fastapi.log
               exit 1
+            fi
 
 # ========================================
 # 3. EJECUTAR SPARK-SUBMIT EN CLUSTER
@@ -87,16 +77,14 @@ jobs:
     name: Ejecutar Spark-submit en nodo principal
     runs-on: ubuntu-latest
     needs: deploy
-
     steps:
       - name: Ejecutar spark-submit en nodo Hadoop
         uses: appleboy/ssh-action@master
         with:
           host: "ec2-35-170-63-103.compute-1.amazonaws.com"
           username: "hadoop"
-          key: ${{ secrets.EC2_SSH_KEY }} 
+          key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-
             echo "=== Ejecutando spark-submit ==="
             spark-submit \
               --archives s3://chinook-data-lake-cmjm/scripts/pyspark_venv.tar.gz#environment \
