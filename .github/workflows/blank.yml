@@ -32,7 +32,6 @@ jobs:
 
             pytest tests/ -v --maxfail=1
 
-
 # ========================================
 # 2. DESPLIEGUE FASTAPI
 # ========================================
@@ -80,4 +79,28 @@ jobs:
               echo "❌ FastAPI no responde"
               tail -n 40 fastapi.log
               exit 1
-            fi
+
+# ========================================
+# 3. EJECUTAR SPARK-SUBMIT EN CLUSTER
+# ========================================
+  spark_job:
+    name: Ejecutar Spark-submit en nodo principal
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Ejecutar spark-submit en nodo Hadoop
+        uses: appleboy/ssh-action@master
+        with:
+          host: "ec2-35-170-63-103.compute-1.amazonaws.com"
+          username: "hadoop"
+          key: ${{ secrets.EC2_SSH_KEY }} 
+          script: |
+
+            echo "=== Ejecutando spark-submit ==="
+            spark-submit \
+              --archives s3://chinook-data-lake-cmjm/scripts/pyspark_venv.tar.gz#environment \
+              --conf spark.yarn.appMasterEnv.PYSPARK_PYTHON=./environment/bin/python \
+              --conf spark.executorEnv.PYSPARK_PYTHON=./environment/bin/python \
+              --packages org.mariadb.jdbc:mariadb-java-client:3.3.2 \
+              s3://chinook-data-lake-cmjm/analytics/scripts/codiguito.py
