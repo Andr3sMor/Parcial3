@@ -71,7 +71,7 @@ jobs:
             fi
 
 # ========================================
-# 3. EJECUTAR SPARK-SUBMIT EN CLUSTER
+# 3. EJECUTAR SPARK-SUBMIT EN CLUSTER ....
 # ========================================
   spark_job:
     name: Ejecutar Spark-submit en nodo principal
@@ -85,6 +85,9 @@ jobs:
           username: "hadoop"
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            
+            yes
+            
             echo "=== Ejecutando spark-submit ==="
             spark-submit \
               --archives s3://chinook-data-lake-cmjm/scripts/pyspark_venv.tar.gz#environment \
